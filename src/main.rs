@@ -1,21 +1,14 @@
 use serenity::async_trait;
 use serenity::client::{Client, Context, EventHandler};
 use serenity::framework::standard::StandardFramework;
+use serenity::model::guild::PartialGuild;
 use serenity::model::{
-    channel::{Channel, ChannelType, GuildChannel},
+    channel::{ChannelType, GuildChannel},
     gateway::Ready,
     id::GuildId,
-    interactions::{
-        application_command::{
-            ApplicationCommand, ApplicationCommandInteractionDataOptionValue,
-            ApplicationCommandOptionType,
-        },
-        Interaction, InteractionResponseType,
-    },
     voice::VoiceState,
+    prelude::{Member, Guild, ChannelId},
 };
-use serenity::utils::Color;
-
 use dotenv::dotenv;
 use std::env;
 
@@ -36,8 +29,24 @@ async fn search_notf_channels(
     Ok(notf_channels)
 }
 
+
+fn user_count(guild: &Guild, channel_id: ChannelId) -> usize {
+    guild
+        .voice_states
+        .values()
+        .filter(|state| { 
+            match state.channel_id {
+                Some(c) => c == channel_id,
+                None => false,
+            }
+        })
+        .count()
+}
+
+
 #[async_trait]
 impl EventHandler for Handler {
+
     async fn voice_state_update(
         &self,
         ctx: Context,
@@ -72,7 +81,7 @@ impl EventHandler for Handler {
                                                                 old_channel_name,
                                                                 new_channel_name,
                                                             ))
-                                                            .color(Color::from_rgb(23, 162, 184))
+                                                
                                                             .thumbnail(&member_avatar_url)
                                                         })
                                                     })
@@ -94,7 +103,6 @@ impl EventHandler for Handler {
                                                         "<@{}> left {}!",
                                                         member_user_id, old_channel_name,
                                                     ))
-                                                    .color(Color::from_rgb(220, 53, 59))
                                                     .thumbnail(&member_avatar_url)
                                                 })
                                             })
@@ -119,7 +127,6 @@ impl EventHandler for Handler {
                                                     "<@{}> joined {}!",
                                                     member_user_id, new_channel_name,
                                                 ))
-                                                .color(Color::from_rgb(40, 167, 69))
                                                 .thumbnail(&member_avatar_url)
                                             })
                                         })
@@ -134,79 +141,14 @@ impl EventHandler for Handler {
         }
     }
 
-    async fn ready(&self, ctx: Context, _ready: Ready) {
-        let _commands = ApplicationCommand::set_global_application_commands(&ctx, |commands| {
-            commands.create_application_command(|command| {
-                command
-                    .name("members")
-                    .description("Get members of voice channel")
-                    .create_option(|option| {
-                        option
-                            .name("name")
-                            .description("voice channel")
-                            .kind(ApplicationCommandOptionType::Channel)
-                            .required(true)
-                    })
-            })
-        })
-        .await;
-    }
-    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        if let Interaction::ApplicationCommand(command) = interaction {
-            match command.data.name.as_str() {
-                "members" => {
-                    if let Some(option) = command.data.options.get(0) {
-                        if let Some(option_resolved) = option.resolved.as_ref() {
-                            if let ApplicationCommandInteractionDataOptionValue::Channel(pchannel) =
-                                option_resolved
-                            {
-                                if pchannel.kind == ChannelType::Voice {
-                                    if let Ok(channel) = pchannel.id.to_channel(&ctx).await {
-                                        if let Channel::Guild(guild_channel) = channel {
-                                            if let Ok(members) = guild_channel.members(&ctx).await {
-                                                let mut members_str = String::new();
-                                                for member in &members {
-                                                    members_str.push_str(&format!(
-                                                        "<@{}>",
-                                                        member.user.id.as_u64()
-                                                    ));
-                                                }
-                                                if let Err(why) = command
-                                                    .create_interaction_response(&ctx, |response| {response.kind(InteractionResponseType::ChannelMessageWithSource)
-                                                        .interaction_response_data(|m| m.create_embed(|e| {
-                                                            e.title(format!("{} members in {}", members.len(), guild_channel.name())).field("Members", members_str, false).color(Color::from_rgb(40, 167, 69))
-                                                        }))
-                                                    })
-                                                    .await
-                                                    {
-                                                        println!("Cannot respond to slash command: {}", why);
-                                                    }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                _ => {
-                    if let Err(why) = command
-                        .create_interaction_response(&ctx, |response| {
-                            response
-                                .kind(InteractionResponseType::ChannelMessageWithSource)
-                                .interaction_response_data(|m| {
-                                    m.content("not implemented :(".to_string())
-                                })
-                        })
-                        .await
-                    {
-                        println!("Cannot respond to slash command: {}", why);
-                    }
-                }
-            };
-        }
+    async fn ready(&self, _ctx: Context, ready: Ready) {
+        println!("{} is connected!", ready.user.name);
     }
 }
+
+
+
+
 
 #[tokio::main]
 async fn main() {
